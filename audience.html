@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Skin Lesion - AI Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn 0.5s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen p-4 md:p-8">
+    <div class="max-w-2xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">AI Dermatology Analysis</h1>
+            <p class="text-gray-600 mt-2">Upload a dermoscopic image for instant AI assessment</p>
+        </header>
+
+        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+            <!-- Image Upload -->
+            <div class="mb-6">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Skin Lesion Image</label>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors">
+                    <input type="file" id="imageInput" accept="image/*" class="hidden">
+                    <label for="imageInput" class="cursor-pointer">
+                        <div class="text-5xl mb-2">📷</div>
+                        <p class="text-gray-600">Click to upload image</p>
+                        <p class="text-xs text-gray-400 mt-1">JPG, PNG up to 5MB</p>
+                    </label>
+                    <img id="imagePreview" class="hidden max-h-48 mx-auto mt-4 rounded-lg">
+                </div>
+            </div>
+
+            <!-- Prompt -->
+            <div class="mb-6">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Additional Context (Optional)</label>
+                <textarea id="promptInput" rows="3" class="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="Add relevant context or a specific question for the AI..."></textarea>
+            </div>
+
+            <!-- Submit Button -->
+            <button onclick="submitAnalysis()" id="submitBtn" class="w-full bg-blue-600 text-white font-bold py-4 rounded-lg hover:bg-blue-700 transition-colors flex justify-center items-center">
+                <span id="btnText">Analyze Image</span>
+                <div id="btnLoader" class="loader hidden ml-3"></div>
+            </button>
+
+            <!-- Status -->
+            <div id="status" class="text-center text-sm text-gray-500 mt-4 h-6"></div>
+
+            <!-- Response Box -->
+            <div id="responseBox" class="hidden mt-6 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg fade-in">
+                <h3 class="font-bold text-gray-800 mb-3 text-lg">🩺 AI Diagnostic Report</h3>
+                <div id="responseContent" class="text-sm text-gray-700 leading-relaxed"></div>
+            </div>
+        </div>
+
+        <div class="text-center mt-6">
+            <a href="index.html" id="backHomeLink" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 bg-white rounded-lg shadow-sm hover:bg-gray-50 transition-colors">← Back</a>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION - UPDATE THESE!
+        // ==========================================
+        const GROQ_API_KEY = "PASTE_YOUR_GROQ_API_KEY_HERE";
+        
+        const DEFAULT_PROMPT = `You are an AI dermatology decision-support assistant. Analyze the provided skin lesion image and generate a brief diagnostic assessment.
+
+Output a JSON object with exactly these keys:
+{
+  "primary_findings": ["Feature 1", "Feature 2"],
+  "risk_interpretation": "Brief explanation of observed features",
+  "recommendation": "Clinical recommendation",
+  "confidence_level": "High/Moderate/Low"
+}
+
+Start immediately with { and end with }. Output ONLY valid JSON. Do not include analysis, reasoning, or commentary.`;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCJtFqZEH-5ojEMlSzF1Rsq7AcOsz3ELsg",
+            authDomain: "skin-cancer-c5f52.firebaseapp.com",
+            databaseURL: "https://skin-cancer-c5f52-default-rtdb.firebaseio.com",
+            projectId: "skin-cancer-c5f52",
+            storageBucket: "skin-cancer-c5f52.firebasestorage.app",
+            messagingSenderId: "68092161302",
+            appId: "1:68092161302:web:ef4d461a01b95ea026b437",
+            measurementId: "G-RBN1ECEHR1"
+        };
+
+        // ==========================================
+        // INITIALIZE
+        // ==========================================
+        if (new URLSearchParams(window.location.search).get('embedded') === 'admin') {
+            document.getElementById('backHomeLink').classList.add('hidden');
+        }
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Image preview
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const preview = document.getElementById('imagePreview');
+                    preview.src = e.target.result;
+                    preview.classList.remove('hidden');
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // ==========================================
+        // IMAGE COMPRESSION
+        // ==========================================
+        function compressImage(file, callback) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width, height = img.height;
+                    const MAX_DIM = 800;
+                    if (width > height && width > MAX_DIM) { height *= MAX_DIM / width; width = MAX_DIM; }
+                    else if (height > MAX_DIM) { width *= MAX_DIM / height; height = MAX_DIM; }
+                    
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    callback(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]); // Base64 without prefix
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // ==========================================
+        // SUBMIT TO GROQ VISION API
+        // ==========================================
+        async function submitAnalysis() {
+            const file = document.getElementById('imageInput').files[0];
+            if (!file) return alert("Please select an image first!");
+            
+            const btn = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnLoader = document.getElementById('btnLoader');
+            const status = document.getElementById('status');
+            
+            btn.disabled = true;
+            btnText.textContent = "Processing...";
+            btnLoader.classList.remove('hidden');
+            status.textContent = "Compressing image...";
+
+            compressImage(file, async (base64Image) => {
+                status.textContent = "Sending to AI model...";
+                const additionalContext = document.getElementById('promptInput').value.trim();
+                const prompt = additionalContext
+                    ? `${DEFAULT_PROMPT}\n\nADDITIONAL USER CONTEXT:\n${additionalContext}`
+                    : DEFAULT_PROMPT;
+                
+                try {
+                    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${GROQ_API_KEY}`
+                        },
+                        body: JSON.stringify({
+                            model: "qwen/qwen3.6-27b",
+                            reasoning_effort: "none",
+                            messages: [{
+                                role: "user",
+                                content: [
+                                    { type: "text", text: prompt },
+                                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                                ]
+                            }],
+                            temperature: 0.3,
+                            max_tokens: 1000,
+                            response_format: { type: "json_object" }
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message);
+                    
+                    let aiText = data.choices[0].message.content;
+                    status.textContent = "Saving to live feed...";
+                    
+                    // Try to parse as JSON for better display
+                    let displayText = "The model did not return a structured report. Please try again.";
+                    let cleanResponse = aiText;
+                    try {
+                        const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            displayText = formatResponse(parsed);
+                            cleanResponse = JSON.stringify(parsed);
+                        }
+                    } catch (e) {}
+                    
+                    // Save to Firebase
+                    db.ref('submissions').push().set({
+                        image: `data:image/jpeg;base64,${base64Image}`,
+                        prompt: prompt,
+                        response: cleanResponse,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Show response
+                    document.getElementById('responseContent').innerHTML = displayText;
+                    document.getElementById('responseBox').classList.remove('hidden');
+                    status.textContent = "✅ Analysis complete!";
+                    
+                } catch (err) {
+                    status.textContent = "❌ Error: " + err.message;
+                    console.error(err);
+                } finally {
+                    btn.disabled = false;
+                    btnText.textContent = "Analyze Image";
+                    btnLoader.classList.add('hidden');
+                }
+            });
+        }
+
+        function formatResponse(obj) {
+            let html = '';
+            if (obj.primary_findings) {
+                html += `<div class="mb-3"><strong>Primary Findings:</strong><ul class="list-disc list-inside mt-1">`;
+                obj.primary_findings.forEach(f => html += `<li>${f}</li>`);
+                html += `</ul></div>`;
+            }
+            if (obj.risk_interpretation) {
+                html += `<div class="mb-3"><strong>Risk Interpretation:</strong> ${obj.risk_interpretation}</div>`;
+            }
+            if (obj.recommendation) {
+                const color = obj.recommendation.toLowerCase().includes('urgent') ? 'text-red-600' : 
+                             obj.recommendation.toLowerCase().includes('routine') ? 'text-green-600' : 'text-yellow-600';
+                html += `<div class="mb-3"><strong>Recommendation:</strong> <span class="${color} font-semibold">${obj.recommendation}</span></div>`;
+            }
+            if (obj.confidence_level) {
+                html += `<div><strong>Confidence:</strong> ${obj.confidence_level}</div>`;
+            }
+            return html || `<pre class="whitespace-pre-wrap">${JSON.stringify(obj, null, 2)}</pre>`;
+        }
+    </script>
+</body>
+</html>

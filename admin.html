@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Live Feed</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Main Dashboard -->
+    <div id="dashboard">
+        <header class="bg-white shadow-sm sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-800">🔬 Admin Dashboard</h1>
+                    <p class="text-sm text-gray-500">Live Audience Submissions</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-right">
+                        <div class="text-2xl font-bold text-indigo-600" id="totalCount">0</div>
+                        <div class="text-xs text-gray-500">Total Submissions</div>
+                    </div>
+                    <a href="index.html" class="inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors">← Back</a>
+                    </div>
+                </div>
+            </header>
+        <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <section class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <iframe src="audience.html?embedded=admin" title="Audience analysis workflow" class="w-full h-[760px] border-0"></iframe>
+            </section>
+
+            <section>
+                <h2 class="text-xl font-bold text-gray-800 mb-4">Audience Submissions</h2>
+                <div id="feedContainer" class="grid grid-cols-1 gap-6">
+                    <div class="text-center text-gray-400 py-12 bg-white rounded-xl shadow-md">
+                        <div class="text-6xl mb-4">⏳</div>
+                        <p class="text-lg">Waiting for audience submissions...</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // ==========================================
+        // CONFIGURATION
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyCJtFqZEH-5ojEMlSzF1Rsq7AcOsz3ELsg",
+            authDomain: "skin-cancer-c5f52.firebaseapp.com",
+            databaseURL: "https://skin-cancer-c5f52-default-rtdb.firebaseio.com",
+            projectId: "skin-cancer-c5f52",
+            storageBucket: "skin-cancer-c5f52.firebasestorage.app",
+            messagingSenderId: "68092161302",
+            appId: "1:68092161302:web:ef4d461a01b95ea026b437",
+            measurementId: "G-RBN1ECEHR1"
+        };
+
+        // ==========================================
+        // DASHBOARD
+        // ==========================================
+        function initializeDashboard() {
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+
+            db.ref('submissions').on('value', (snapshot) => {
+                const data = snapshot.val() || {};
+                const items = Object.entries(data).map(([id, val]) => ({ id, ...val }));
+                items.sort((a, b) => b.timestamp - a.timestamp);
+
+                document.getElementById('totalCount').textContent = items.length;
+
+                const container = document.getElementById('feedContainer');
+                if (items.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center text-gray-400 py-12">
+                            <div class="text-6xl mb-4">⏳</div>
+                            <p class="text-lg">Waiting for audience submissions...</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = '';
+                items.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = "bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow";
+                    
+                    let responseDisplay = "No structured report available for this submission.";
+                    try {
+                        const jsonMatch = String(item.response || '').match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            const parsed = JSON.parse(jsonMatch[0]);
+                            responseDisplay = formatResponse(parsed);
+                        }
+                    } catch (e) {}
+
+                    const time = new Date(item.timestamp).toLocaleTimeString();
+                    
+                    card.innerHTML = `
+                        <img src="${item.image}" class="w-full h-48 object-cover">
+                        <div class="p-4">
+                            <div class="text-xs text-gray-500 mb-2">${time}</div>
+                            <div class="text-sm text-gray-700">${responseDisplay}</div>
+                        </div>
+                    `;
+                    container.appendChild(card);
+                });
+            });
+        }
+
+        function formatResponse(obj) {
+            let html = '';
+            if (obj.primary_findings) {
+                html += `<div class="mb-2"><strong class="text-gray-800">Findings:</strong><ul class="list-disc list-inside text-xs mt-1">`;
+                obj.primary_findings.forEach(f => html += `<li>${f}</li>`);
+                html += `</ul></div>`;
+            }
+            if (obj.risk_interpretation) {
+                html += `<div class="mb-2 text-xs"><strong class="text-gray-800">Interpretation:</strong> ${obj.risk_interpretation}</div>`;
+            }
+            if (obj.recommendation) {
+                const color = obj.recommendation.toLowerCase().includes('urgent') ? 'text-red-600' : 
+                             obj.recommendation.toLowerCase().includes('routine') ? 'text-green-600' : 'text-yellow-600';
+                html += `<div class="mb-2 text-xs"><strong class="text-gray-800">Recommendation:</strong> <span class="${color} font-semibold">${obj.recommendation}</span></div>`;
+            }
+            if (obj.confidence_level) {
+                html += `<div class="text-xs"><strong class="text-gray-800">Confidence:</strong> ${obj.confidence_level}</div>`;
+            }
+            return html || `<pre class="whitespace-pre-wrap text-xs">${JSON.stringify(obj, null, 2)}</pre>`;
+        }
+
+        initializeDashboard();
+    </script>
+</body>
+</html>
