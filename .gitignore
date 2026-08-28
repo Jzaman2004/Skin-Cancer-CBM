@@ -1,0 +1,12 @@
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+
+# Local configuration overrides
+*.local
+config.local.js
+
+# Editor and operating-system files
+.vscode/
+.DS_Store

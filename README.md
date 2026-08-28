@@ -89,18 +89,14 @@ Images are stored as base64 data in Realtime Database. This is convenient for a 
 
 ### Groq
 
-The Groq request configuration is defined in `audience.html`. The API key must be supplied locally before using the demo:
-
-```html
-const GROQ_API_KEY = "your-groq-api-key";
-```
-
-Do not commit the real key. For a real deployment, move this request to a server-side endpoint and load the key from an environment variable such as `GROQ_API_KEY`.
+The Groq key and request configuration are defined in `audience.html`:
 
 - Endpoint: `https://api.groq.com/openai/v1/chat/completions`
 - Vision model: `qwen/qwen3.6-27b`
 - Input: text prompt plus a base64 `image_url`
 - Output: JSON mode with reasoning disabled
+
+For a real deployment, do not place a Groq secret in client-side HTML. Move the Groq call to a server-side endpoint, keep the key in an environment variable such as `GROQ_API_KEY`, and have the browser call that endpoint instead.
 
 ## Troubleshooting
 
