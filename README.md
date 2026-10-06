@@ -27,7 +27,7 @@ The admin page embeds `audience.html?embedded=admin` on its left side. The embed
 2. The browser previews and compresses the image to a maximum dimension of 800 pixels.
 3. Optional text is treated as **additional context**. It is appended to the default dermatology instructions, not used as a replacement.
 4. The image and prompt are sent to Groq's OpenAI-compatible chat endpoint.
-5. The `qwen/qwen3.6-27b` multimodal vision model returns a JSON report.
+5. The `qwen/qwen3.8-27b` multimodal vision model returns a JSON report.
 6. The report is displayed to the user and saved to Firebase under `submissions`.
 7. The admin feed listens to Firebase and updates when new submissions arrive.
 
@@ -49,8 +49,11 @@ The client requests JSON mode and disables model reasoning output. If a model re
 The pages use CDN-hosted JavaScript libraries and do not require a build step.
 
 ```bash
-python3 -m http.server 8000
+cp .env.example .env.local
+node server.js
 ```
+
+Set `GROQ_API_KEY` in `.env.local` before starting the server. The file is ignored by Git and the key is read only by the local proxy, never sent to the browser. The proxy serves the pages and forwards analysis requests to Groq.
 
 Open [http://localhost:8000/](http://localhost:8000/) and choose a role.
 
@@ -89,14 +92,14 @@ Images are stored as base64 data in Realtime Database. This is convenient for a 
 
 ### Groq
 
-The Groq key and request configuration are defined in `audience.html`:
+The Groq request configuration is defined in the local server:
 
 - Endpoint: `https://api.groq.com/openai/v1/chat/completions`
-- Vision model: `qwen/qwen3.6-27b`
+- Vision model: `qwen/qwen3.8-27b`
 - Input: text prompt plus a base64 `image_url`
 - Output: JSON mode with reasoning disabled
 
-For a real deployment, do not place a Groq secret in client-side HTML. Move the Groq call to a server-side endpoint, keep the key in an environment variable such as `GROQ_API_KEY`, and have the browser call that endpoint instead.
+For a real deployment, keep the Groq secret in a server-side environment variable and have the browser call the server-side endpoint instead.
 
 ## Troubleshooting
 
