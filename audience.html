@@ -124,12 +124,14 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
                 }
             } catch (e) {}
 
-            // 2. Try fetching key from Firebase Realtime Database (`config/groqApiKey`)
+            // 2. Try fetching key from Firebase Realtime Database (`config`)
             try {
-                const snapshot = await db.ref('config/groqApiKey').once('value');
-                const firebaseKey = snapshot.val();
+                const snapshot = await db.ref('config').once('value');
+                const configData = snapshot.val();
+                const firebaseKey = configData?.groqApiKey || configData;
+
                 if (firebaseKey && typeof firebaseKey === 'string' && firebaseKey.trim()) {
-                    resolvedApiKey = firebaseKey.trim();
+                    resolvedApiKey = firebaseKey.trim().replace(/^["']|["']$/g, '');
                     hasServerKey = false;
                     useDirectGroq = true;
                     return; // Found in Firebase! No need to show input box.
