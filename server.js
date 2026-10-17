@@ -36,17 +36,18 @@ function readRequestBody(request) {
 }
 
 async function analyze(request, response) {
-    if (!process.env.GROQ_API_KEY) {
-        return sendJson(response, 500, { error: { message: "GROQ_API_KEY is missing from .env.local." } });
-    }
-
     try {
         const payload = JSON.parse(await readRequestBody(request));
+        const apiKey = process.env.GROQ_API_KEY || payload.apiKey;
+        if (!apiKey || typeof apiKey !== "string") {
+            return sendJson(response, 400, { error: { message: "Add a Groq API key to .env.local or enter your own key in the form." } });
+        }
+
         const upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
+                "Authorization": `Bearer ${apiKey}`
             },
             body: JSON.stringify({
                 model: "qwen/qwen3.8-27b",
@@ -81,6 +82,9 @@ function serveStatic(request, response, requestUrl) {
 
 const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+    if (request.method === "GET" && requestUrl.pathname === "/api/config") {
+        return sendJson(response, 200, { hasServerKey: Boolean(process.env.GROQ_API_KEY) });
+    }
     if (request.method === "POST" && requestUrl.pathname === "/api/analyze") return analyze(request, response);
     if (request.method === "GET") return serveStatic(request, response, requestUrl);
     sendJson(response, 405, { error: "Method not allowed" });

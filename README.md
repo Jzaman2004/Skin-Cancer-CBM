@@ -55,6 +55,8 @@ node server.js
 
 Set `GROQ_API_KEY` in `.env.local` before starting the server. The file is ignored by Git and the key is read only by the local proxy, never sent to the browser. The proxy serves the pages and forwards analysis requests to Groq.
 
+If `GROQ_API_KEY` is not configured, the analysis page displays a password-style field where each user can enter their own Groq key. That key is sent only with the analysis request and is not stored by the app. For remote use, serve the app over HTTPS and do not put API keys in frontend files or commit them to the repository.
+
 Open [http://localhost:8000/](http://localhost:8000/) and choose a role.
 
 Direct page URLs:
