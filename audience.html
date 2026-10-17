@@ -85,23 +85,9 @@ Output a JSON object with exactly these keys:
 
 Start immediately with { and end with }. Output ONLY valid JSON. Do not include analysis, reasoning, or commentary.`;
 
-        let hasServerKey = true;
-        let useDirectGroq = false;
-        const apiConfigReady = fetch("/api/config")
-            .then(response => {
-                if (!response.ok) throw new Error(`API configuration unavailable (HTTP ${response.status})`);
-                return response.json();
-            })
-            .then(config => {
-                hasServerKey = config.hasServerKey === true;
-                if (!hasServerKey) document.getElementById("apiKeySection").classList.remove("hidden");
-            })
-            .catch(error => {
-                hasServerKey = false;
-                useDirectGroq = true;
-                document.getElementById("apiKeySection").classList.remove("hidden");
-                console.error(error);
-            });
+        let hasServerKey = false;
+        let useDirectGroq = true;
+        let resolvedApiKey = null;
 
         const firebaseConfig = {
             apiKey: "AIzaSyCJtFqZEH-5ojEMlSzF1Rsq7AcOsz3ELsg",
@@ -123,6 +109,40 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+
+        const apiConfigReady = (async () => {
+            // 1. Try local server first
+            try {
+                const response = await fetch("/api/config");
+                if (response.ok) {
+                    const config = await response.json();
+                    if (config.hasServerKey === true) {
+                        hasServerKey = true;
+                        useDirectGroq = false;
+                        return;
+                    }
+                }
+            } catch (e) {}
+
+            // 2. Try fetching key from Firebase Realtime Database (`config/groqApiKey`)
+            try {
+                const snapshot = await db.ref('config/groqApiKey').once('value');
+                const firebaseKey = snapshot.val();
+                if (firebaseKey && typeof firebaseKey === 'string' && firebaseKey.trim()) {
+                    resolvedApiKey = firebaseKey.trim();
+                    hasServerKey = false;
+                    useDirectGroq = true;
+                    return; // Found in Firebase! No need to show input box.
+                }
+            } catch (err) {
+                console.warn("Could not fetch key from Firebase:", err);
+            }
+
+            // 3. Fallback: Show manual input box if both server and Firebase fail
+            hasServerKey = false;
+            useDirectGroq = true;
+            document.getElementById("apiKeySection").classList.remove("hidden");
+        })();
 
         // Image preview
         document.getElementById('imageInput').addEventListener('change', function(e) {
@@ -187,7 +207,7 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
                 
                 try {
                     await apiConfigReady;
-                    const apiKey = hasServerKey ? undefined : document.getElementById("apiKeyInput").value.trim();
+                    const apiKey = hasServerKey ? undefined : (resolvedApiKey || document.getElementById("apiKeyInput").value.trim());
                     if (!hasServerKey && !apiKey) throw new Error("Enter your Groq API key to continue.");
 
                     const requestBody = {

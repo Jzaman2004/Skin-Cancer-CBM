@@ -86,7 +86,7 @@
                 container.innerHTML = '';
                 items.forEach(item => {
                     const card = document.createElement('div');
-                    card.className = "bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow";
+                    card.className = "relative bg-white rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow";
                     
                     let responseDisplay = "No structured report available for this submission.";
                     try {
@@ -100,12 +100,32 @@
                     const time = new Date(item.timestamp).toLocaleTimeString();
                     
                     card.innerHTML = `
+                        <button type="button" class="absolute top-2 left-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full bg-red-500/70 text-white shadow-md transition-colors hover:bg-red-600/80 focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2" aria-label="Delete submission" title="Delete submission">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12m-9 0V5h6v2m-7 0 1 12h6l1-12M10 11v5m4-5v5"/>
+                            </svg>
+                        </button>
                         <img src="${item.image}" class="w-full h-48 object-cover">
                         <div class="p-4">
                             <div class="text-xs text-gray-500 mb-2">${time}</div>
                             <div class="text-sm text-gray-700">${responseDisplay}</div>
                         </div>
                     `;
+                    card.querySelector('button').addEventListener('click', async () => {
+                        if (!window.confirm('Delete this audience submission permanently?')) return;
+
+                        const deleteButton = card.querySelector('button');
+                        deleteButton.disabled = true;
+                        deleteButton.classList.add('opacity-60', 'cursor-wait');
+                        try {
+                            await db.ref(`submissions/${item.id}`).remove();
+                        } catch (error) {
+                            deleteButton.disabled = false;
+                            deleteButton.classList.remove('opacity-60', 'cursor-wait');
+                            window.alert(`Unable to delete submission: ${error.message}`);
+                            console.error('Firebase submission delete failed:', error);
+                        }
+                    });
                     container.appendChild(card);
                 });
             }, (error) => {
