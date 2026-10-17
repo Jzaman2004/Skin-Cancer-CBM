@@ -59,6 +59,8 @@ If `GROQ_API_KEY` is not configured, the analysis page displays a password-style
 
 Open [http://localhost:8000/](http://localhost:8000/) and choose a role.
 
+When the site is hosted on GitHub Pages, `server.js` is not running because GitHub Pages only hosts static files. In that case, the page sends the entered key directly to Groq for that request. The key is not stored by the page; users should only enter keys they are comfortable using from a browser.
+
 Direct page URLs:
 
 - [Audience workflow](audience.html)
