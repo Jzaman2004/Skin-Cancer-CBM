@@ -59,7 +59,17 @@ async function analyze(request, response) {
             })
         });
 
-        const result = await upstream.json();
+        const responseText = await upstream.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch {
+            return sendJson(response, 502, {
+                error: {
+                    message: `Groq returned a non-JSON response (HTTP ${upstream.status}). Check the API endpoint and key, then try again.`
+                }
+            });
+        }
         sendJson(response, upstream.status, result);
     } catch (error) {
         sendJson(response, 400, { error: { message: error.message } });

@@ -202,12 +202,22 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
                             }],
                             temperature: 0.3,
                             max_tokens: 1000,
-                            response_format: { type: "json_object" }
-                        }),
-                        ...(apiKey ? { apiKey } : {})
+                            response_format: { type: "json_object" },
+                            ...(apiKey ? { apiKey } : {})
+                        })
                     });
                     
-                    const data = await response.json();
+                    const responseText = await response.text();
+                    let data;
+                    try {
+                        data = JSON.parse(responseText);
+                    } catch {
+                        throw new Error(
+                            response.status === 404 || response.status === 405
+                                ? "The API proxy is not running. Start the app with `node server.js` and open http://localhost:8000."
+                                : `The API proxy returned an unexpected response (HTTP ${response.status}).`
+                        );
+                    }
                     if (data.error) throw new Error(data.error.message);
                     
                     let aiText = data.choices[0].message.content;
