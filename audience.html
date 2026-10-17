@@ -198,20 +198,44 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
             btn.disabled = true;
             btnText.textContent = "Processing...";
             btnLoader.classList.remove('hidden');
-            status.textContent = "Compressing image...";
+            status.textContent = "Fetching API key & compressing image...";
 
             compressImage(file, async (base64Image) => {
-                status.textContent = "Sending to AI model...";
                 const additionalContext = document.getElementById('promptInput').value.trim();
                 const prompt = additionalContext
                     ? `${DEFAULT_PROMPT}\n\nADDITIONAL USER CONTEXT:\n${additionalContext}`
                     : DEFAULT_PROMPT;
                 
                 try {
+                    // Ensure config is fully resolved
                     await apiConfigReady;
-                    const apiKey = hasServerKey ? undefined : (resolvedApiKey || document.getElementById("apiKeyInput").value.trim());
-                    if (!hasServerKey && !apiKey) throw new Error("Enter your Groq API key to continue.");
 
+                    // Fallback safety: If resolvedApiKey is still missing, try fetching it directly from Firebase right now
+                    let activeApiKey = resolvedApiKey;
+                    if (!hasServerKey && !activeApiKey) {
+                        try {
+                            const snapshot = await db.ref('config').once('value');
+                            const configData = snapshot.val();
+                            const firebaseKey = configData?.groqApiKey || configData;
+                            if (firebaseKey && typeof firebaseKey === 'string' && firebaseKey.trim()) {
+                                activeApiKey = firebaseKey.trim().replace(/^["']|["']$/g, '');
+                            }
+                        } catch (error) {
+                            console.warn("Unable to fetch the Firebase Groq API key:", error);
+                        }
+                    }
+
+                    // Final check: Use manual input if Firebase and server both failed
+                    if (!hasServerKey && !activeApiKey) {
+                        activeApiKey = document.getElementById("apiKeyInput").value.trim();
+                    }
+
+                    if (!hasServerKey && !activeApiKey) {
+                        document.getElementById("apiKeySection").classList.remove("hidden");
+                        throw new Error("Enter your Groq API key or check your Firebase database connection.");
+                    }
+
+                    status.textContent = "Sending to AI model...";
                     const requestBody = {
                         model: "qwen/qwen3.8-27b",
                         reasoning_effort: "none",
@@ -225,15 +249,16 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
                         temperature: 0.3,
                         max_tokens: 1000,
                         response_format: { type: "json_object" },
-                        ...(!useDirectGroq && apiKey ? { apiKey } : {})
+                        ...(!useDirectGroq && activeApiKey ? { apiKey: activeApiKey } : {})
                     };
+
                     const response = await fetch(useDirectGroq
                         ? "https://api.groq.com/openai/v1/chat/completions"
                         : "/api/analyze", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
-                            ...(useDirectGroq ? { Authorization: `Bearer ${apiKey}` } : {})
+                            ...(useDirectGroq ? { Authorization: `Bearer ${activeApiKey}` } : {})
                         },
                         body: JSON.stringify(requestBody)
                     });
@@ -254,7 +279,6 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
                     let aiText = data.choices[0].message.content;
                     status.textContent = "Saving to live feed...";
                     
-                    // Try to parse as JSON for better display
                     let displayText = "The model did not return a structured report. Please try again.";
                     let cleanResponse = aiText;
                     try {
@@ -274,7 +298,6 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
                         timestamp: Date.now()
                     });
                     
-                    // Show response
                     document.getElementById('responseContent').innerHTML = displayText;
                     document.getElementById('responseBox').classList.remove('hidden');
                     status.textContent = "✅ Analysis complete!";
