@@ -18,6 +18,50 @@ function loadLocalEnvironment() {
 
 loadLocalEnvironment();
 
+const firebaseDatabaseUrl = process.env.FIREBASE_DATABASE_URL ||
+    "https://skin-cancer-c5f52-default-rtdb.firebaseio.com";
+const firebaseGroqApiKeyPath = process.env.FIREBASE_GROQ_API_KEY_PATH || "config/groqApiKey";
+
+async function getFirebaseApiKey() {
+    const endpoint = `${firebaseDatabaseUrl.replace(/\/+$/, "")}/${firebaseGroqApiKeyPath
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}.json`;
+    const response = await fetch(endpoint);
+    if (!response.ok) {
+        throw new Error(`Firebase returned HTTP ${response.status} while reading the Groq API key.`);
+    }
+
+    const value = await response.json();
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+async function resolveApiKey(requestApiKey) {
+    if (process.env.GROQ_API_KEY) return process.env.GROQ_API_KEY;
+
+    try {
+        const firebaseApiKey = await getFirebaseApiKey();
+        if (firebaseApiKey) return firebaseApiKey;
+    } catch (error) {
+        console.warn(`Unable to load the Groq API key from Firebase: ${error.message}`);
+    }
+
+    return typeof requestApiKey === "string" && requestApiKey.trim()
+        ? requestApiKey.trim()
+        : undefined;
+}
+
+async function hasConfiguredApiKey() {
+    if (process.env.GROQ_API_KEY) return true;
+
+    try {
+        return Boolean(await getFirebaseApiKey());
+    } catch (error) {
+        console.warn(`Unable to check the Firebase Groq API key: ${error.message}`);
+        return false;
+    }
+}
+
 function sendJson(response, statusCode, body) {
     response.writeHead(statusCode, { "Content-Type": "application/json" });
     response.end(JSON.stringify(body));
@@ -38,9 +82,9 @@ function readRequestBody(request) {
 async function analyze(request, response) {
     try {
         const payload = JSON.parse(await readRequestBody(request));
-        const apiKey = process.env.GROQ_API_KEY || payload.apiKey;
+        const apiKey = await resolveApiKey(payload.apiKey);
         if (!apiKey || typeof apiKey !== "string") {
-            return sendJson(response, 400, { error: { message: "Add a Groq API key to .env.local or enter your own key in the form." } });
+            return sendJson(response, 400, { error: { message: "Add a Groq API key to .env.local, configure one in Firebase, or enter your own key in the form." } });
         }
 
         const upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -93,7 +137,7 @@ function serveStatic(request, response, requestUrl) {
 const server = http.createServer(async (request, response) => {
     const requestUrl = new URL(request.url, `http://${request.headers.host}`);
     if (request.method === "GET" && requestUrl.pathname === "/api/config") {
-        return sendJson(response, 200, { hasServerKey: Boolean(process.env.GROQ_API_KEY) });
+        return sendJson(response, 200, { hasServerKey: await hasConfiguredApiKey() });
     }
     if (request.method === "POST" && requestUrl.pathname === "/api/analyze") return analyze(request, response);
     if (request.method === "GET") return serveStatic(request, response, requestUrl);

@@ -55,6 +55,14 @@ node server.js
 
 Set `GROQ_API_KEY` in `.env.local` before starting the server. The file is ignored by Git and the key is read only by the local proxy, never sent to the browser. The proxy serves the pages and forwards analysis requests to Groq.
 
+The proxy resolves a key in this order:
+
+1. `GROQ_API_KEY` in `.env.local` or the process environment.
+2. A string stored at `FIREBASE_GROQ_API_KEY_PATH` in the Firebase Realtime Database.
+3. The key entered in the form.
+
+To configure the Firebase fallback, set `FIREBASE_DATABASE_URL` and store the Groq key at `config/groqApiKey` (or the path configured by `FIREBASE_GROQ_API_KEY_PATH`). The Firebase key is read by `server.js` only; it is never sent to the browser. Protect this database location with Firebase rules or authentication. Do not place a Groq key in a publicly readable Firebase path: anyone who can read that path can use the key and incur charges.
+
 If `GROQ_API_KEY` is not configured, the analysis page displays a password-style field where each user can enter their own Groq key. That key is sent only with the analysis request and is not stored by the app. For remote use, serve the app over HTTPS and do not put API keys in frontend files or commit them to the repository.
 
 Open [http://localhost:8000/](http://localhost:8000/) and choose a role.
@@ -93,6 +101,18 @@ The app writes records like this:
 ```
 
 Images are stored as base64 data in Realtime Database. This is convenient for a small demonstration but is not a scalable image-storage strategy.
+
+The Groq fallback key is separate from submission data:
+
+```json
+{
+	"config": {
+		"groqApiKey": "gsk_..."
+	}
+}
+```
+
+Because the server reads this value through Firebase's REST API, the server must be able to access the configured database path. For production, a server-side secret manager is safer than storing an API key in Realtime Database.
 
 ### Groq
 
