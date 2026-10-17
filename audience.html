@@ -236,7 +236,7 @@ Start immediately with { and end with }. Output ONLY valid JSON. Do not include 
                     } catch (e) {}
                     
                     // Save to Firebase
-                    db.ref('submissions').push().set({
+                    await db.ref('submissions').push().set({
                         image: `data:image/jpeg;base64,${base64Image}`,
                         prompt: prompt,
                         response: cleanResponse,

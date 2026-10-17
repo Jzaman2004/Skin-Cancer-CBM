@@ -108,6 +108,14 @@
                     `;
                     container.appendChild(card);
                 });
+            }, (error) => {
+                document.getElementById('totalCount').textContent = '—';
+                document.getElementById('feedContainer').innerHTML = `
+                    <div class="text-center text-red-600 py-12 bg-white rounded-xl shadow-md">
+                        Unable to load submissions: ${error.message}
+                    </div>
+                `;
+                console.error('Firebase submission read failed:', error);
             });
         }
 
